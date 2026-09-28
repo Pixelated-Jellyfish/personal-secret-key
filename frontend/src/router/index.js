@@ -25,12 +25,6 @@ const routes = [
     name: 'note-edit',
     component: () => import('@/views/NoteEditorView.vue'),
     meta: { requiresAuth: true }
-  },
-  {
-    path: '/aes-lab',
-    name: 'aes-lab',
-    component: () => import('@/views/AesLabView.vue'),
-    meta: { requiresAuth: true }
   }
 ]
 

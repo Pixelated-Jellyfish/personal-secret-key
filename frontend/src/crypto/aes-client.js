@@ -260,7 +260,14 @@ export function keyExpansionWithTrace(key) {
 
 /**
  * Encrypt single block (16 bytes) with AES-128
- * Returns: { ciphertext: Uint8Array, trace: [...] }
+ * @param {Uint8Array} block - 16-byte plaintext block
+ * @param {Array<Array<Array<number>>>} roundKeys - 11 round keys (each 4x4 row-major matrix)
+ * @param {boolean} trace - Whether to return step-by-step trace
+ * @returns {{ciphertext: Uint8Array, trace: Array<{round: number, step: string, state: Array<Array<string>>, description: string}>|null}}
+ *   If trace=true: { ciphertext: Uint8Array, trace: TraceStep[] }
+ *   If trace=false: { ciphertext: Uint8Array, trace: null }
+ *   TraceStep: { round: 0-10, step: 'add_round_key_initial'|'sub_bytes'|'shift_rows'|'mix_columns'|'add_round_key',
+ *                state: 4x4 hex string matrix, description: human-readable step description }
  */
 export function encryptBlock(block, roundKeys, trace = false) {
   if (block.length !== 16) {
@@ -363,31 +370,112 @@ export function encryptBlock(block, roundKeys, trace = false) {
 
 /**
  * Decrypt single block (16 bytes) with AES-128
+ * @param {Uint8Array} block - 16-byte ciphertext block
+ * @param {Array<Array<Array<number>>>} roundKeys - 11 round keys (each 4x4 row-major matrix)
+ * @param {boolean} trace - Whether to return step-by-step trace
+ * @returns {{plaintext: Uint8Array, trace: Array<{round: number, step: string, state: Array<Array<string>>, description: string}>|null}}
+ *   If trace=true: { plaintext: Uint8Array, trace: TraceStep[] }
+ *   If trace=false: { plaintext: Uint8Array, trace: null }
+ *   TraceStep: { round: 0-10, step: 'add_round_key_initial'|'inv_shift_rows'|'inv_sub_bytes'|'add_round_key'|'inv_mix_columns',
+ *                state: 4x4 hex string matrix, description: human-readable step description }
  */
-export function decryptBlock(block, roundKeys) {
+export function decryptBlock(block, roundKeys, trace = false) {
   if (block.length !== 16) {
     throw new Error('Block must be 16 bytes')
   }
 
   let state = bytesToState(block)
+  const traceData = []
 
   // Initial AddRoundKey (Round 10)
   state = addRoundKey(state, roundKeys[10])
+  if (trace) {
+    traceData.push({
+      round: 10,
+      step: 'add_round_key_initial',
+      state: stateToHex(state),
+      description: 'Initial AddRoundKey (Round 10)'
+    })
+  }
 
   // Rounds 9-1 (inverse order)
   for (let roundNum = 9; roundNum >= 1; roundNum--) {
     state = shiftRows(state, true)
+    if (trace) {
+      traceData.push({
+        round: roundNum,
+        step: 'inv_shift_rows',
+        state: stateToHex(state),
+        description: `Round ${roundNum}: InvShiftRows`
+      })
+    }
+
     state = subBytes(state, true)
+    if (trace) {
+      traceData.push({
+        round: roundNum,
+        step: 'inv_sub_bytes',
+        state: stateToHex(state),
+        description: `Round ${roundNum}: InvSubBytes`
+      })
+    }
+
     state = addRoundKey(state, roundKeys[roundNum])
+    if (trace) {
+      traceData.push({
+        round: roundNum,
+        step: 'add_round_key',
+        state: stateToHex(state),
+        description: `Round ${roundNum}: AddRoundKey`
+      })
+    }
+
     state = mixColumns(state, true)
+    if (trace) {
+      traceData.push({
+        round: roundNum,
+        step: 'inv_mix_columns',
+        state: stateToHex(state),
+        description: `Round ${roundNum}: InvMixColumns`
+      })
+    }
   }
 
   // Round 0
   state = shiftRows(state, true)
-  state = subBytes(state, true)
-  state = addRoundKey(state, roundKeys[0])
+  if (trace) {
+    traceData.push({
+      round: 0,
+      step: 'inv_shift_rows',
+      state: stateToHex(state),
+      description: 'Round 0: InvShiftRows'
+    })
+  }
 
-  return stateToBytes(state)
+  state = subBytes(state, true)
+  if (trace) {
+    traceData.push({
+      round: 0,
+      step: 'inv_sub_bytes',
+      state: stateToHex(state),
+      description: 'Round 0: InvSubBytes'
+    })
+  }
+
+  state = addRoundKey(state, roundKeys[0])
+  if (trace) {
+    traceData.push({
+      round: 0,
+      step: 'add_round_key',
+      state: stateToHex(state),
+      description: 'Round 0: AddRoundKey (Final)'
+    })
+  }
+
+  return {
+    plaintext: stateToBytes(state),
+    trace: traceData
+  }
 }
 
 /**

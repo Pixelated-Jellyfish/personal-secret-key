@@ -287,29 +287,85 @@ def encrypt_block(block: bytes, round_keys: list[list[list[int]]], trace: bool =
     return state_to_bytes(state), trace_data
 
 
-def decrypt_block(block: bytes, round_keys: list[list[list[int]]]) -> bytes:
-    """Dekripsi 1 blok (16 bytes) dengan AES-128."""
+def decrypt_block(block: bytes, round_keys: list[list[list[int]]], trace: bool = False) -> tuple[bytes, list[dict] | None]:
+    """Dekripsi 1 blok (16 bytes) dengan AES-128.
+    Returns: (plaintext, trace_data) jika trace=True, else (plaintext, None)
+    """
     if len(block) != 16:
         raise ValueError("Block harus 16 bytes")
 
     state = bytes_to_state(block)
+    trace_data = []
 
     # Initial AddRoundKey (Round 10)
     state = add_round_key(state, round_keys[10])
+    if trace:
+        trace_data.append({
+            "round": 10,
+            "step": "add_round_key_initial",
+            "state": state_to_hex(state)
+        })
 
     # Rounds 9-1 (inverse order)
     for round_num in range(9, 0, -1):
         state = shift_rows(state, inverse=True)
+        if trace:
+            trace_data.append({
+                "round": round_num,
+                "step": "inv_shift_rows",
+                "state": state_to_hex(state)
+            })
+
         state = sub_bytes(state, inverse=True)
+        if trace:
+            trace_data.append({
+                "round": round_num,
+                "step": "inv_sub_bytes",
+                "state": state_to_hex(state)
+            })
+
         state = add_round_key(state, round_keys[round_num])
+        if trace:
+            trace_data.append({
+                "round": round_num,
+                "step": "add_round_key",
+                "state": state_to_hex(state)
+            })
+
         state = mix_columns(state, inverse=True)
+        if trace:
+            trace_data.append({
+                "round": round_num,
+                "step": "inv_mix_columns",
+                "state": state_to_hex(state)
+            })
 
     # Round 0
     state = shift_rows(state, inverse=True)
-    state = sub_bytes(state, inverse=True)
-    state = add_round_key(state, round_keys[0])
+    if trace:
+        trace_data.append({
+            "round": 0,
+            "step": "inv_shift_rows",
+            "state": state_to_hex(state)
+        })
 
-    return state_to_bytes(state)
+    state = sub_bytes(state, inverse=True)
+    if trace:
+        trace_data.append({
+            "round": 0,
+            "step": "inv_sub_bytes",
+            "state": state_to_hex(state)
+        })
+
+    state = add_round_key(state, round_keys[0])
+    if trace:
+        trace_data.append({
+            "round": 0,
+            "step": "add_round_key",
+            "state": state_to_hex(state)
+        })
+
+    return state_to_bytes(state), trace_data
 
 
 def pkcs7_pad(data: bytes, block_size: int = 16) -> bytes:

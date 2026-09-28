@@ -109,7 +109,7 @@ class TestAESEncryption:
     def test_encrypt_decrypt_block(self):
         round_keys = key_expansion(FIPS197_KEY)
         ct, _ = encrypt_block(FIPS197_PLAINTEXT, round_keys)
-        pt = decrypt_block(ct, round_keys)
+        pt, _ = decrypt_block(ct, round_keys)
         assert pt == FIPS197_PLAINTEXT
 
     def test_fips197_test_vector(self):

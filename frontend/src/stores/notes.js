@@ -45,7 +45,8 @@ export const useNotesStore = defineStore('notes', () => {
         title: titleEnc.ciphertext,
         title_iv: titleEnc.iv,
         body: bodyEnc.ciphertext,
-        body_iv: bodyEnc.iv
+        body_iv: bodyEnc.iv,
+        client_encrypted: true
       })
       
       // Add to local list with decrypted title for immediate display
@@ -72,7 +73,8 @@ export const useNotesStore = defineStore('notes', () => {
         title: titleEnc.ciphertext,
         title_iv: titleEnc.iv,
         body: bodyEnc.ciphertext,
-        body_iv: bodyEnc.iv
+        body_iv: bodyEnc.iv,
+        client_encrypted: true
       })
       
       const idx = notes.value.findIndex(n => n.id === id)
@@ -119,6 +121,11 @@ export const useNotesStore = defineStore('notes', () => {
   // Decrypt note locally using client-side crypto
   function decryptNoteLocally(note, aesKey) {
     try {
+      // Check if we have the required ciphertext and IV fields
+      if (!note.title_iv || !note.body_iv) {
+        // Note doesn't have raw ciphertext data (e.g., from list endpoint)
+        return { title: note.title || '[Tidak tersedia]', body: note.body || '[Tidak tersedia]' }
+      }
       const title = decryptCBCBase64(note.title_ciphertext || note.title, aesKey, note.title_iv)
       const body = decryptCBCBase64(note.body_ciphertext || note.body, aesKey, note.body_iv)
       return { title, body }
@@ -142,6 +149,10 @@ export const useNotesStore = defineStore('notes', () => {
 
   async function getAesLog(aesKey, id) {
     return await notesApi.getAesLog(aesKey, id)
+  }
+
+  async function getAesLogDecrypt(aesKey, id) {
+    return await notesApi.getAesLogDecrypt(aesKey, id)
   }
 
   async function getRoundKeys(aesKey, id) {
@@ -169,6 +180,7 @@ export const useNotesStore = defineStore('notes', () => {
     decryptNoteLocally,
     encryptNoteLocally,
     getAesLog,
+    getAesLogDecrypt,
     getRoundKeys,
     clear
   }

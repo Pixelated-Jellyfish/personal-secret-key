@@ -47,7 +47,7 @@ class NoteRaw(BaseModel):
 
 
 class AesLogResponse(BaseModel):
-    """Response untuk /notes/{id}/aes-log"""
+    """Response untuk /notes/{id}/aes-log dan /notes/{id}/aes-log-decrypt"""
     input_matrix: list[list[str]]  # 4x4 hex matrix
     trace: list[dict]  # List of {round, step, state: 4x4 hex matrix}
 

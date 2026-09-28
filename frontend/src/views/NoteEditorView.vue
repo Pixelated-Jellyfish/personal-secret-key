@@ -2,6 +2,21 @@
   <div class="editor-view">
     <div v-if="loading" class="loading">Memuat...</div>
     
+    <!-- Decryption Animation Overlay (when loading existing note) -->
+    <AesAnimation
+      v-if="showDecryptAnimation"
+      :visible="showDecryptAnimation"
+      :title="'Membuka Catatan (Dekripsi)'"
+      :aes-key="cryptoStore.aesKey"
+      :ciphertext="decryptData.ciphertext"
+      :iv="decryptData.iv"
+      :auto-play="true"
+      :mode="'decrypt'"
+      :show-cbc-flow="true"
+      @close="cancelDecryptAnimation"
+      @complete="onDecryptComplete"
+    />
+    
     <form v-else-if="!showAnimation" @submit.prevent="save" class="editor-form">
       <div class="form-group">
         <label for="title" class="label">Judul</label>
@@ -43,14 +58,16 @@
       </div>
     </form>
     
-    <!-- Encryption Animation Overlay -->
-    <EncryptionAnimation
+    <!-- Encryption Animation Overlay (when saving) -->
+    <AesAnimation
       v-if="showAnimation"
       :visible="showAnimation"
       :title="isEditing ? 'Memperbarui Catatan (Enkripsi)' : 'Menyimpan Catatan Baru (Enkripsi)'"
       :input-text="form.title + '\n' + form.body"
       :aes-key="cryptoStore.aesKey"
       :auto-play="true"
+      :mode="'encrypt'"
+      :show-cbc-flow="true"
       @close="closeAnimation"
       @complete="finishSave"
     />
@@ -64,7 +81,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCryptoStore } from '@/stores/crypto'
 import { useNotesStore } from '@/stores/notes'
-import EncryptionAnimation from '@/components/EncryptionAnimation.vue'
+import AesAnimation from '@/components/AesAnimation.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -79,7 +96,19 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const showAnimation = ref(false)
+const showDecryptAnimation = ref(false)
 const pendingSave = ref(null) // 'create' or 'update'
+const decryptData = ref({ ciphertext: null, iv: null })
+
+// Helper to convert base64 to Uint8Array
+const base64ToBytes = (b64) => {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
 
 const loadNote = async () => {
   if (!isEditing.value) return
@@ -88,6 +117,31 @@ const loadNote = async () => {
   error.value = ''
   
   try {
+    // First, fetch raw ciphertext and IV for decryption animation
+    const rawNote = await notesStore.getNoteRaw(cryptoStore.aesKey, noteId.value)
+    
+    if (rawNote) {
+      // Store ciphertext and IV for decryption animation (convert base64 to Uint8Array)
+      decryptData.value = {
+        ciphertext: base64ToBytes(rawNote.body_ciphertext || rawNote.body),
+        iv: base64ToBytes(rawNote.body_iv)
+      }
+      showDecryptAnimation.value = true
+    } else {
+      error.value = 'Catatan tidak ditemukan'
+      loading.value = false
+    }
+  } catch (e) {
+    error.value = e.message || 'Gagal memuat catatan'
+    loading.value = false
+  }
+}
+
+const onDecryptComplete = async () => {
+  showDecryptAnimation.value = false
+  
+  try {
+    // Now fetch the decrypted note content
     const note = await notesStore.getNote(cryptoStore.aesKey, noteId.value)
     if (note) {
       form.value.title = note.title
@@ -100,6 +154,12 @@ const loadNote = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const cancelDecryptAnimation = () => {
+  showDecryptAnimation.value = false
+  loading.value = false
+  router.push({ name: 'notes' })
 }
 
 const save = async () => {
@@ -137,6 +197,9 @@ const finishSave = async () => {
   showAnimation.value = false
   
   try {
+    let savedTitle = ''
+    let savedBody = ''
+    
     if (pendingSave.value === 'update') {
       await notesStore.updateNote(
         cryptoStore.aesKey, 
@@ -144,16 +207,20 @@ const finishSave = async () => {
         form.value.title, 
         form.value.body
       )
+      savedTitle = form.value.title
+      savedBody = form.value.body
     } else if (pendingSave.value === 'create') {
       const newId = await notesStore.createNote(
         cryptoStore.aesKey, 
         form.value.title, 
         form.value.body
       )
-      router.push({ name: 'note-edit', params: { id: newId } })
+      savedTitle = form.value.title
+      savedBody = form.value.body
+      router.push({ name: 'notes', query: { saved: 'true', title: savedTitle, body: savedBody } })
       return
     }
-    router.push({ name: 'notes' })
+    router.push({ name: 'notes', query: { saved: 'true', title: savedTitle, body: savedBody } })
   } catch (e) {
     error.value = e.message || 'Gagal menyimpan catatan'
   } finally {

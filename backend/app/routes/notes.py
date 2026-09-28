@@ -6,7 +6,7 @@ import base64
 from fastapi import APIRouter, Header, HTTPException, status
 from typing import Annotated
 
-from ..crypto.aes import key_expansion, key_expansion_with_trace, encrypt_block
+from ..crypto.aes import key_expansion, key_expansion_with_trace, encrypt_block, decrypt_block
 from ..crypto.kdf import derive_key, DEFAULT_SALT
 from ..schemas import (
     NoteCreate, NoteUpdate, NoteResponse, NoteListItem, NoteRaw,
@@ -158,4 +158,50 @@ def get_round_keys(note_id: str, aes_key: bytes = Header(..., alias="X-AES-Key")
     return RoundKeysResponse(
         round_keys=round_keys_hex,
         key_expansion_trace=trace
+    )
+
+
+@router.get("/notes/{note_id}/aes-log-decrypt", response_model=AesLogResponse)
+def get_aes_log_decrypt(note_id: str, aes_key: bytes = Header(..., alias="X-AES-Key")):
+    """
+    Visualisasi proses DEKRIPSI AES untuk blok pertama catatan.
+    Menampilkan ciphertext blok pertama → trace balik (InvAddRoundKey, InvShiftRows, InvSubBytes, InvMixColumns) → plaintext.
+    """
+    key = get_aes_key(aes_key)
+    
+    note_raw = get_note_raw(note_id)
+    if note_raw is None:
+        raise HTTPException(status_code=404, detail="Catatan tidak ditemukan")
+    
+    # Ambil blok pertama dari body ciphertext
+    from ..crypto.modes import decrypt_cbc
+    
+    ct = base64.b64decode(note_raw["body_ciphertext"])
+    iv = base64.b64decode(note_raw["body_iv"])
+    
+    # Dekripsi CBC untuk dapatkan plaintext
+    round_keys = key_expansion(key)
+    plaintext = decrypt_cbc(ct, key, iv)
+    
+    # Ambil 16 byte pertama plaintext (ini yang akan jadi output akhir dekripsi)
+    first_block_plaintext = plaintext[:16]
+    if len(first_block_plaintext) < 16:
+        from ..crypto.aes import pkcs7_pad
+        first_block_plaintext = pkcs7_pad(first_block_plaintext)[:16]
+    
+    # Enkripsi blok plaintext pertama untuk dapatkan ciphertext blok pertama (ECB mode)
+    # Ini adalah ciphertext yang akan didekripsi dalam visualisasi
+    first_block_ciphertext, _ = encrypt_block(first_block_plaintext, round_keys, trace=False)
+    
+    # Input matrix untuk visualisasi dekripsi = ciphertext blok pertama
+    from ..crypto.aes import bytes_to_state, state_to_hex
+    input_state = bytes_to_state(first_block_ciphertext)
+    input_matrix = state_to_hex(input_state)
+    
+    # Dekripsi blok pertama dengan trace
+    _, trace = decrypt_block(first_block_ciphertext, round_keys, trace=True)
+    
+    return AesLogResponse(
+        input_matrix=input_matrix,
+        trace=trace
     )

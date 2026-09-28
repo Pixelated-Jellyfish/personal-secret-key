@@ -1,3 +1,59 @@
+/**
+ * @typedef {Object} NoteListItem
+ * @property {string} id - Note UUID
+ * @property {string} title - Decrypted title
+ * @property {string} updated_at - ISO8601 timestamp
+ */
+
+/**
+ * @typedef {Object} NoteResponse
+ * @property {string} id
+ * @property {string} title - Decrypted title
+ * @property {string} body - Decrypted body
+ * @property {string} created_at
+ * @property {string} updated_at
+ */
+
+/**
+ * @typedef {Object} NoteRaw
+ * @property {string} id
+ * @property {string} title_ciphertext - Base64 encrypted title
+ * @property {string} title_iv - Base64 IV for title
+ * @property {string} body_ciphertext - Base64 encrypted body
+ * @property {string} body_iv - Base64 IV for body
+ * @property {string} created_at
+ * @property {string} updated_at
+ */
+
+/**
+ * @typedef {Object} TraceStep
+ * @property {number} round - Round number (0-10)
+ * @property {string} step - Step name (e.g., 'sub_bytes', 'shift_rows', 'mix_columns', 'add_round_key')
+ * @property {string[][]} state - 4x4 hex string matrix
+ * @property {string} description - Human-readable description
+ */
+
+/**
+ * @typedef {Object} AesLogResponse
+ * @property {string[][]} input_matrix - 4x4 hex matrix of input block
+ * @property {TraceStep[]} trace - Array of trace steps
+ */
+
+/**
+ * @typedef {Object} RoundKeysResponse
+ * @property {string[][][]} round_keys - 11 x 4x4 hex matrices
+ * @property {Object[]} key_expansion_trace - Key expansion trace info
+ */
+
+/**
+ * @typedef {Object} CreateNotePayload
+ * @property {string} title - Base64 encrypted title
+ * @property {string} title_iv - Base64 IV for title
+ * @property {string} body - Base64 encrypted body
+ * @property {string} body_iv - Base64 IV for body
+ * @property {boolean} client_encrypted - Must be true when sending pre-encrypted data
+ */
+
 const API_BASE = '/api'
 
 function getAuthHeaders(aesKey) {
@@ -78,6 +134,13 @@ export const notesApi = {
 
   async getAesLog(aesKey, id) {
     const response = await fetch(`${API_BASE}/notes/${id}/aes-log`, {
+      headers: getAuthHeaders(aesKey)
+    })
+    return handleResponse(response)
+  },
+
+  async getAesLogDecrypt(aesKey, id) {
+    const response = await fetch(`${API_BASE}/notes/${id}/aes-log-decrypt`, {
       headers: getAuthHeaders(aesKey)
     })
     return handleResponse(response)

@@ -66,7 +66,7 @@ def decrypt_cbc(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     prev_block = iv
     
     for block in blocks:
-        dec_block = decrypt_block(block, round_keys)
+        dec_block, _ = decrypt_block(block, round_keys)
         # XOR dengan IV atau ciphertext block sebelumnya
         xor_block = bytes(a ^ b for a, b in zip(dec_block, prev_block))
         plaintext.extend(xor_block)

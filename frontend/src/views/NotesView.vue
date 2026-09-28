@@ -7,7 +7,21 @@
       </router-link>
     </div>
     
-    <div v-if="loading" class="loading">Memuat...</div>
+    <!-- Encryption Recap Animation (after saving note) -->
+    <AesAnimation
+      v-if="showEncryptionRecap"
+      :visible="showEncryptionRecap"
+      :title="'Catatan Tersimpan (Enkripsi)'"
+      :input-text="recapData.title + '\n' + recapData.body"
+      :aes-key="cryptoStore.aesKey"
+      :auto-play="true"
+      :mode="'encrypt'"
+      :show-cbc-flow="true"
+      @close="onRecapComplete"
+      @complete="onRecapComplete"
+    />
+    
+    <div v-else-if="loading" class="loading">Memuat...</div>
     
     <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
@@ -21,7 +35,7 @@
     
     <ul v-else class="notes-list">
       <li v-for="note in sortedNotes" :key="note.id" class="note-item">
-        <router-link :to="`/notes/${note.id}`" class="note-link" @click="prepareNote(note)">
+        <router-link :to="`/notes/${note.id}`" class="note-link">
           <div class="note-title">{{ note.decryptedTitle || note.title }}</div>
           <div class="note-meta">
             <time :datetime="note.updated_at">{{ formatDate(note.updated_at) }}</time>
@@ -48,14 +62,20 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useCryptoStore } from '@/stores/crypto'
 import { useNotesStore } from '@/stores/notes'
+import AesAnimation from '@/components/AesAnimation.vue'
 
+const route = useRoute()
+const router = useRouter()
 const cryptoStore = useCryptoStore()
 const notesStore = useNotesStore()
 
 const noteToDelete = ref(null)
+const showEncryptionRecap = ref(false)
+const recapData = ref({ title: '', body: '' })
 
 const sortedNotes = computed(() => notesStore.sortedNotes)
 const loading = computed(() => notesStore.loading)
@@ -63,15 +83,6 @@ const error = computed(() => notesStore.error)
 
 const fetchNotes = async () => {
   await notesStore.fetchNotes(cryptoStore.aesKey)
-}
-
-const prepareNote = (note) => {
-  // Decrypt note locally for the editor view
-  if (note.title_ciphertext && note.title_iv) {
-    const decrypted = notesStore.decryptNoteLocally(note, cryptoStore.aesKey)
-    // Store decrypted title for immediate display in editor
-    note.decryptedTitle = decrypted.title
-  }
 }
 
 const confirmDelete = (note) => {
@@ -100,9 +111,35 @@ const formatDate = (isoString) => {
   })
 }
 
+// Check for saved note data in query params on mount
 onMounted(() => {
+  checkForSavedNote()
   fetchNotes()
 })
+
+// Also check when route changes (e.g., returning from editor)
+watch(() => route.fullPath, () => {
+  checkForSavedNote()
+})
+
+const checkForSavedNote = () => {
+  // Check for query params from editor after save
+  if (route.query.saved && route.query.title && route.query.body) {
+    recapData.value = {
+      title: route.query.title,
+      body: route.query.body
+    }
+    showEncryptionRecap.value = true
+    // Clean up URL
+    router.replace({ name: 'notes' })
+  }
+}
+
+const onRecapComplete = () => {
+  showEncryptionRecap.value = false
+  recapData.value = { title: '', body: '' }
+  fetchNotes()
+}
 </script>
 
 <style scoped>

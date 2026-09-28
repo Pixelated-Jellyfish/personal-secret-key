@@ -1,7 +1,7 @@
 <template>
-  <div v-if="visible" class="encryption-animation-overlay" @click.self="close">
+  <div v-if="visible" class="aes-animation-overlay" @click.self="close">
     <transition name="modal">
-      <div class="encryption-modal" ref="modal">
+      <div class="aes-modal" ref="modal">
         <div class="modal-header">
           <h2>{{ title }}</h2>
           <div class="progress-indicator">
@@ -14,21 +14,34 @@
         <div class="animation-content">
           <!-- Animation Canvas Area -->
           <div class="canvas-area">
-            <div class="state-visualization" ref="stateViz">
+            <div 
+              class="state-visualization" 
+              ref="stateViz"
+              :class="{ 'with-iv': showCbcFlow && props.iv }"
+            >
               <!-- Input Matrix -->
               <div class="matrix-panel input-panel">
                 <div class="panel-header">
-                  <span class="panel-title">Plaintext Input</span>
+                  <span class="panel-title">{{ inputPanelTitle }}</span>
                   <span class="panel-label">16 bytes → 4×4 Matrix</span>
                 </div>
                 <HexMatrix :matrix="inputMatrix" :highlight="highlightInput" />
+              </div>
+
+              <!-- IV Panel for CBC Mode -->
+              <div v-if="showCbcFlow && props.iv" class="matrix-panel iv-panel">
+                <div class="panel-header">
+                  <span class="panel-title">IV (Initialization Vector)</span>
+                  <span class="panel-label">16 bytes → 4×4 Matrix</span>
+                </div>
+                <HexMatrix :matrix="ivMatrix" :highlight="highlightInput" />
               </div>
 
               <!-- Animated State Transition -->
               <div class="matrix-panel animated-panel">
                 <div class="panel-header">
                   <span class="panel-title">{{ currentStepInfo?.description || 'AES State' }}</span>
-                  <span class="panel-label" v-if="currentStepInfo">Round {{ currentStepInfo.round }}, {{ getStepName(currentStepInfo.step) }}</span>
+                  <span class="panel-label" v-if="currentStepInfo">{{ getStepLabel(currentStepInfo) }}</span>
                 </div>
                 <div class="state-matrix-container">
                   <HexMatrix 
@@ -43,10 +56,10 @@
                 <!-- Step Description -->
                 <div class="step-description" v-if="currentStepInfo">
                   <div class="step-icon" :class="stepIconClass">
-                    <span v-if="currentStepInfo.step === 'sub_bytes'">◐</span>
-                    <span v-else-if="currentStepInfo.step === 'shift_rows'">↻</span>
-                    <span v-else-if="currentStepInfo.step === 'mix_columns'">⊞</span>
-                    <span v-else-if="currentStepInfo.step.includes('add_round_key')">⊕</span>
+                    <span v-if="isSubBytesStep">{{ mode === 'encrypt' ? '◐' : '◑' }}</span>
+                    <span v-else-if="isShiftRowsStep">↻</span>
+                    <span v-else-if="isMixColumnsStep">⊞</span>
+                    <span v-else-if="isAddRoundKeyStep">⊕</span>
                     <span v-else>●</span>
                   </div>
                   <p class="step-text">{{ getStepDescription(currentStepInfo.step) }}</p>
@@ -56,8 +69,8 @@
               <!-- Output Matrix -->
               <div class="matrix-panel output-panel">
                 <div class="panel-header">
-                  <span class="panel-title">Ciphertext Output</span>
-                  <span class="panel-label">Encrypted 16 bytes</span>
+                  <span class="panel-title">{{ outputPanelTitle }}</span>
+                  <span class="panel-label">{{ outputPanelLabel }}</span>
                 </div>
                 <HexMatrix 
                   :matrix="outputMatrix" 
@@ -166,11 +179,18 @@ import HexMatrix from './HexMatrix.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  title: { type: String, default: 'Proses Enkripsi AES-128' },
+  title: { type: String, default: '' },
   inputText: { type: String, default: '' },
   aesKey: { type: Object, default: null }, // Uint8Array
+  iv: { type: Object, default: null }, // Uint8Array for CBC
+  ciphertext: { type: Object, default: null }, // Uint8Array for decrypt mode
   autoPlay: { type: Boolean, default: true },
-  onComplete: { type: Function, default: null }
+  onComplete: { type: Function, default: null },
+  mode: { type: String, default: 'encrypt', validator: v => ['encrypt', 'decrypt'].includes(v) },
+  traceData: { type: Array, default: () => [] }, // Pre-computed trace from API
+  roundKeysData: { type: Array, default: () => [] }, // Pre-computed round keys from API
+  keyExpansionTraceData: { type: Array, default: () => [] },
+  showCbcFlow: { type: Boolean, default: true } // Show IV XOR step for CBC
 })
 
 const emit = defineEmits(['close', 'complete'])
@@ -195,6 +215,7 @@ const showRoundKeys = ref(true)
 const currentRoundKey = ref(0)
 const statusMessage = ref('')
 const statusIcon = ref('')
+const ivMatrix = ref([])
 
 // Animation timing
 const STEP_DELAY = 800 // ms between steps
@@ -203,52 +224,165 @@ const totalSteps = computed(() => animationSteps.value.length)
 const progressPercent = computed(() => totalSteps.value > 0 ? ((currentStep.value + 1) / totalSteps.value) * 100 : 0)
 const currentStepInfo = computed(() => animationSteps.value[currentStep.value] || null)
 
+const mode = computed(() => props.mode)
+
+const inputPanelTitle = computed(() => mode.value === 'encrypt' ? 'Plaintext Input' : 'Ciphertext Input')
+const outputPanelTitle = computed(() => mode.value === 'encrypt' ? 'Ciphertext Output' : 'Plaintext Output')
+const outputPanelLabel = computed(() => mode.value === 'encrypt' ? 'Encrypted 16 bytes' : 'Decrypted 16 bytes')
+
+const defaultTitle = computed(() => mode.value === 'encrypt' ? 'Proses Enkripsi AES-128' : 'Proses Dekripsi AES-128')
+const displayTitle = computed(() => props.title || defaultTitle.value)
+
+function getStepLabel(stepInfo) {
+  const round = stepInfo.round
+  const stepName = getStepName(stepInfo.step)
+  return `Ronde ${round}, ${stepName}`
+}
+
 function getStepName(step) {
-  const names = {
+  const encryptNames = {
     'add_round_key_initial': 'AddRoundKey (Initial)',
     'sub_bytes': 'SubBytes',
     'shift_rows': 'ShiftRows',
     'mix_columns': 'MixColumns',
     'add_round_key': 'AddRoundKey'
   }
+  const decryptNames = {
+    'add_round_key_initial': 'AddRoundKey (Round 10)',
+    'inv_shift_rows': 'InvShiftRows',
+    'inv_sub_bytes': 'InvSubBytes',
+    'add_round_key': 'AddRoundKey',
+    'inv_mix_columns': 'InvMixColumns'
+  }
+  const names = mode.value === 'encrypt' ? encryptNames : decryptNames
   return names[step] || step
 }
 
 function getShortStepName(step) {
-  const names = {
+  const encryptNames = {
     'add_round_key_initial': 'ARK₀',
     'sub_bytes': 'SB',
     'shift_rows': 'SR',
     'mix_columns': 'MC',
-    'add_round_key': 'ARK'
+    'add_round_key': 'ARK',
+    'cbc_xor_iv': 'IV⊕'
   }
+  const decryptNames = {
+    'add_round_key_initial': 'ARK₁₀',
+    'inv_shift_rows': 'ISR',
+    'inv_sub_bytes': 'ISB',
+    'add_round_key': 'ARK',
+    'inv_mix_columns': 'IMC',
+    'cbc_xor_iv': 'IV⊕'
+  }
+  const names = mode.value === 'encrypt' ? encryptNames : decryptNames
   return names[step] || step.slice(0, 3)
 }
 
 function getStepDescription(step) {
-  const descriptions = {
+  const encryptDescriptions = {
     'add_round_key_initial': 'XOR plaintext dengan Round Key 0 (Initial AddRoundKey)',
     'sub_bytes': 'Substitusi setiap byte menggunakan S-Box AES',
     'shift_rows': 'Geser baris 1, 2, 3 ke kiri masing-masing 1, 2, 3 posisi',
     'mix_columns': 'Campur kolom menggunakan perkalian Galois Field (GF(2⁸))',
-    'add_round_key': 'XOR state dengan Round Key ronde ini'
+    'add_round_key': 'XOR state dengan Round Key ronde ini',
+    'cbc_xor_iv': 'CBC Mode: XOR Plaintext dengan IV (Initialization Vector)'
   }
+  const decryptDescriptions = {
+    'add_round_key_initial': 'XOR ciphertext dengan Round Key 10 (Initial AddRoundKey)',
+    'inv_shift_rows': 'Geser baris 1, 2, 3 ke kanan masing-masing 1, 2, 3 posisi (inverse ShiftRows)',
+    'inv_sub_bytes': 'Substitusi balik setiap byte menggunakan Inverse S-Box AES',
+    'add_round_key': 'XOR state dengan Round Key ronde ini',
+    'inv_mix_columns': 'Campur kolom balik menggunakan matriks Inverse MixColumns (GF(2⁸))',
+    'cbc_xor_iv': 'CBC Mode: XOR Hasil Dekripsi dengan IV = Plaintext Asli'
+  }
+  const descriptions = mode.value === 'encrypt' ? encryptDescriptions : decryptDescriptions
   return descriptions[step] || ''
 }
 
+const isSubBytesStep = computed(() => {
+  if (!currentStepInfo.value) return false
+  const step = currentStepInfo.value.step
+  return step === 'sub_bytes' || step === 'inv_sub_bytes'
+})
+
+const isShiftRowsStep = computed(() => {
+  if (!currentStepInfo.value) return false
+  const step = currentStepInfo.value.step
+  return step === 'shift_rows' || step === 'inv_shift_rows'
+})
+
+const isMixColumnsStep = computed(() => {
+  if (!currentStepInfo.value) return false
+  const step = currentStepInfo.value.step
+  return step === 'mix_columns' || step === 'inv_mix_columns'
+})
+
+const isAddRoundKeyStep = computed(() => {
+  if (!currentStepInfo.value) return false
+  return currentStepInfo.value.step.includes('add_round_key')
+})
+
+const isCbcXorStep = computed(() => {
+  if (!currentStepInfo.value) return false
+  return currentStepInfo.value.step === 'cbc_xor_iv'
+})
+
 const stepIconClass = computed(() => {
   if (!currentStepInfo.value) return ''
-  const step = currentStepInfo.value.step
-  if (step === 'sub_bytes') return 'icon-sub'
-  if (step === 'shift_rows') return 'icon-shift'
-  if (step === 'mix_columns') return 'icon-mix'
-  if (step.includes('add_round_key')) return 'icon-xor'
+  if (isSubBytesStep.value) return 'icon-sub'
+  if (isShiftRowsStep.value) return 'icon-shift'
+  if (isMixColumnsStep.value) return 'icon-mix'
+  if (isAddRoundKeyStep.value) return 'icon-xor'
+  if (isCbcXorStep.value) return 'icon-xor'
   return ''
 })
 
 async function initializeAnimation() {
   if (!props.inputText || !props.aesKey) return
 
+  // If traceData is provided (from API), use it directly
+  if (props.traceData.length > 0) {
+    animationSteps.value = props.traceData
+    inputMatrix.value = props.traceData[0] ? getInputMatrixFromTrace(props.traceData) : []
+    outputMatrix.value = props.traceData[props.traceData.length - 1] ? props.traceData[props.traceData.length - 1].state : []
+    roundKeys.value = props.roundKeysData.length > 0 ? props.roundKeysData : []
+    keyExpansionTrace.value = props.keyExpansionTraceData.length > 0 ? props.keyExpansionTraceData : []
+  } else {
+    // Fallback: compute locally (for backwards compatibility)
+    await initializeAnimationLocal()
+  }
+
+  // Reset animation state
+  currentStep.value = 0
+  animating.value = false
+  animationComplete.value = false
+  highlightInput.value = true
+  highlightOutput.value = false
+  currentRoundKey.value = mode.value === 'encrypt' ? 0 : 10
+  changedCells.value = []
+  animatedMatrix.value = JSON.parse(JSON.stringify(inputMatrix.value))
+  prevMatrix.value = JSON.parse(JSON.stringify(inputMatrix.value))
+
+  statusMessage.value = mode.value === 'encrypt' ? 'Siap memulai animasi enkripsi...' : 'Siap memulai animasi dekripsi...'
+  statusIcon.value = '▶'
+
+  if (props.autoPlay) {
+    await nextTick()
+    startAnimation()
+  }
+}
+
+function getInputMatrixFromTrace(trace) {
+  // For encrypt: first trace step is after initial AddRoundKey, so input is before that
+  // For decrypt: first trace step is after initial AddRoundKey (round 10), so input is before that
+  // We need to reverse the first step to get input
+  // Since we don't have the pre-initial state in trace, we'll use a different approach
+  // The API should provide input_matrix separately
+  return []
+}
+
+async function initializeAnimationLocal() {
   // Import AES functions
   const { 
     bytesToState, 
@@ -256,17 +390,11 @@ async function initializeAnimation() {
     keyExpansion, 
     keyExpansionWithTrace,
     encryptBlock,
+    decryptBlock,
     pkcs7Pad,
+    pkcs7Unpad,
     hexToBytes
   } = await import('@/crypto/aes-client.js')
-
-  // Prepare input - take first 16 bytes of text
-  const encoder = new TextEncoder()
-  let inputBytes = encoder.encode(props.inputText)
-  if (inputBytes.length < 16) {
-    inputBytes = pkcs7Pad(inputBytes) // Pad to 16 bytes
-  }
-  const firstBlock = inputBytes.slice(0, 16)
 
   // Generate round keys
   const rk = keyExpansion(props.aesKey)
@@ -276,34 +404,122 @@ async function initializeAnimation() {
   const { traceInfo } = keyExpansionWithTrace(props.aesKey)
   keyExpansionTrace.value = traceInfo
 
-  // Input matrix
-  inputMatrix.value = stateToHex(bytesToState(firstBlock))
+  if (mode.value === 'encrypt') {
+    await initializeEncryption(rk, bytesToState, stateToHex, encryptBlock, pkcs7Pad)
+  } else {
+    await initializeDecryption(rk, bytesToState, stateToHex, decryptBlock, pkcs7Unpad)
+  }
+
   animatedMatrix.value = JSON.parse(JSON.stringify(inputMatrix.value))
   prevMatrix.value = JSON.parse(JSON.stringify(inputMatrix.value))
+}
 
-  // Encrypt with trace to get all steps
-  const { trace } = encryptBlock(firstBlock, rk, true)
+async function initializeEncryption(rk, bytesToState, stateToHex, encryptBlock, pkcs7Pad) {
+  const encoder = new TextEncoder()
+  let inputBytes = encoder.encode(props.inputText)
+  
+  if (inputBytes.length < 16) {
+    inputBytes = pkcs7Pad(inputBytes)
+  }
+  
+  // For CBC, we need IV
+  const iv = props.iv || crypto.getRandomValues(new Uint8Array(16))
+  
+  // Store IV matrix for visualization
+  ivMatrix.value = stateToHex(bytesToState(iv))
+  
+  // First block: plaintext XOR IV
+  const firstBlock = inputBytes.slice(0, 16)
+  const xorBlock = new Uint8Array(16)
+  for (let j = 0; j < 16; j++) {
+    xorBlock[j] = firstBlock[j] ^ iv[j]
+  }
+  
+  // Store IV and plaintext for visualization
+  inputMatrix.value = stateToHex(bytesToState(firstBlock))
+  outputMatrix.value = [] // Will be set after encryption
+  
+  // If showing CBC flow, add IV XOR as first step
+  if (props.showCbcFlow) {
+    const xorMatrix = stateToHex(bytesToState(xorBlock))
+    
+    // Prepend CBC XOR step to animation steps
+    const { trace } = encryptBlock(xorBlock, rk, true)
+    animationSteps.value = [
+      {
+        round: 0,
+        step: 'cbc_xor_iv',
+        state: xorMatrix,
+        description: 'CBC: Plaintext ⊕ IV (First Block)'
+      },
+      ...trace
+    ]
+    
+    // Encrypt to get final ciphertext
+    const { ciphertext } = encryptBlock(xorBlock, rk, false)
+    outputMatrix.value = stateToHex(bytesToState(ciphertext))
+  } else {
+    // Original behavior (ECB-style for first block)
+    inputMatrix.value = stateToHex(bytesToState(firstBlock))
+    const { trace } = encryptBlock(firstBlock, rk, true)
+    animationSteps.value = trace
+    const { ciphertext } = encryptBlock(firstBlock, rk, false)
+    outputMatrix.value = stateToHex(bytesToState(ciphertext))
+  }
+}
+
+async function initializeDecryption(rk, bytesToState, stateToHex, decryptBlock, pkcs7Unpad) {
+  // For decryption, we need ciphertext and IV
+  let ciphertext = props.ciphertext
+  const iv = props.iv
+  
+  if (!ciphertext || !iv) {
+    // Fallback: encrypt first then decrypt
+    const encoder = new TextEncoder()
+    let inputBytes = encoder.encode(props.inputText)
+    if (inputBytes.length < 16) {
+      inputBytes = pkcs7Pad(inputBytes)
+    }
+    const firstBlock = inputBytes.slice(0, 16)
+    const { ciphertext: ct } = encryptBlock(firstBlock, rk, false)
+    ciphertext = ct
+  }
+  
+  // Store IV matrix for visualization
+  ivMatrix.value = stateToHex(bytesToState(iv))
+  
+  const firstCipherBlock = ciphertext.slice(0, 16)
+  
+  // Input matrix = ciphertext
+  inputMatrix.value = stateToHex(bytesToState(firstCipherBlock))
+  
+  // Decrypt with trace
+  const { trace, plaintext } = decryptBlock(firstCipherBlock, rk, true)
   animationSteps.value = trace
-
-  // Final output matrix (after all rounds)
-  const { ciphertext } = encryptBlock(firstBlock, rk, false)
-  outputMatrix.value = stateToHex(bytesToState(ciphertext))
-
-  // Reset animation state
-  currentStep.value = 0
-  animating.value = false
-  animationComplete.value = false
-  highlightInput.value = true
-  highlightOutput.value = false
-  currentRoundKey.value = 0
-  changedCells.value = []
-
-  statusMessage.value = 'Siap memulai animasi enkripsi...'
-  statusIcon.value = '▶'
-
-  if (props.autoPlay) {
-    await nextTick()
-    startAnimation()
+  
+  // Output matrix = decrypted block (before CBC XOR)
+  const decryptedBlock = plaintext.slice(0, 16)
+  outputMatrix.value = stateToHex(bytesToState(decryptedBlock))
+  
+  // If showing CBC flow, add IV XOR step at the end
+  if (props.showCbcFlow) {
+    const plaintextXor = new Uint8Array(16)
+    for (let j = 0; j < 16; j++) {
+      plaintextXor[j] = decryptedBlock[j] ^ iv[j]
+    }
+    const finalMatrix = stateToHex(bytesToState(plaintextXor))
+    
+    // Add CBC XOR step at the end
+    animationSteps.value = [
+      ...trace,
+      {
+        round: 0,
+        step: 'cbc_xor_iv',
+        state: finalMatrix,
+        description: 'CBC: Decrypted Block ⊕ IV = Plaintext'
+      }
+    ]
+    outputMatrix.value = finalMatrix
   }
 }
 
@@ -373,7 +589,7 @@ function finishAnimation() {
   animating.value = false
   animationComplete.value = true
   highlightOutput.value = true
-  statusMessage.value = 'Enkripsi selesai! Ciphertext telah dihasilkan.'
+  statusMessage.value = mode.value === 'encrypt' ? 'Enkripsi selesai! Ciphertext telah dihasilkan.' : 'Dekripsi selesai! Plaintext telah dipulihkan.'
   statusIcon.value = '✓'
   
   if (props.onComplete) {
@@ -403,10 +619,10 @@ function resetAnimation() {
   animationComplete.value = false
   highlightInput.value = true
   highlightOutput.value = false
-  currentRoundKey.value = 0
+  currentRoundKey.value = mode.value === 'encrypt' ? 0 : 10
   changedCells.value = []
   animatedMatrix.value = JSON.parse(JSON.stringify(inputMatrix.value))
-  prevMatrix.value = JSON.parse(JSON.stringify(inputMatrix.value))
+  prevMatrix.value = JSON.parse(JSON.parse(JSON.stringify(inputMatrix.value)))
   statusMessage.value = 'Animasi direset. Siap memulai lagi.'
   statusIcon.value = '↺'
 }
@@ -465,13 +681,25 @@ watch(() => props.aesKey, () => {
   }
 })
 
+watch(() => props.mode, () => {
+  if (props.visible && props.aesKey) {
+    initializeAnimation()
+  }
+})
+
+watch(() => props.traceData, () => {
+  if (props.visible && props.aesKey && props.traceData.length > 0) {
+    initializeAnimation()
+  }
+})
+
 onUnmounted(() => {
   animating.value = false
 })
 </script>
 
 <style scoped>
-.encryption-animation-overlay {
+.aes-animation-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -489,7 +717,7 @@ onUnmounted(() => {
   to { opacity: 1; }
 }
 
-.encryption-modal {
+.aes-modal {
   background: #FFFFFF;
   border: 1px solid #E8E8EC;
   border-radius: 16px;
@@ -581,8 +809,13 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.state-visualization.with-iv {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 @media (max-width: 900px) {
-  .state-visualization {
+  .state-visualization,
+  .state-visualization.with-iv {
     grid-template-columns: 1fr;
   }
 }
@@ -598,6 +831,10 @@ onUnmounted(() => {
 
 .input-panel {
   border-color: #A5D6A7;
+}
+
+.iv-panel {
+  border-color: #FFAB91;
 }
 
 .output-panel {
@@ -841,7 +1078,7 @@ onUnmounted(() => {
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid #E8E8EC;
-  flex-wrap: wrap;
+  flex-wrap: wrap
 }
 
 .status-message {

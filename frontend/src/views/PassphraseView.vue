@@ -180,11 +180,7 @@ const submit = async () => {
       derivationSteps[2].output = keyHex.value
       derivationSteps[3].output = keyBase64.value
       keyDerived.value = true
-      
-      // Auto-complete after showing result
-      setTimeout(() => {
-        completeUnlock()
-      }, 1500)
+      // Wait for user to click "Lanjutkan ke Catatan"
     } else {
       error.value = 'Passphrase salah atau gagal derive kunci'
       showKeyAnimation.value = false

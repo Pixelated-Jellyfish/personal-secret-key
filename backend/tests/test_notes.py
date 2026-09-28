@@ -166,6 +166,28 @@ class TestNotesAPI:
             for row in rk:
                 assert len(row) == 4
 
+    def test_aes_log_decrypt_endpoint(self):
+        response = client.post("/api/notes",
+            json={"title": "AES Decrypt Test", "body": "Ini adalah plaintext untuk test dekripsi AES visualisasi"},
+            headers=auth_header())
+        note_id = response.json()["id"]
+
+        response = client.get(f"/api/notes/{note_id}/aes-log-decrypt", headers=auth_header())
+        assert response.status_code == 200
+        data = response.json()
+        assert "input_matrix" in data
+        assert "trace" in data
+        assert len(data["input_matrix"]) == 4
+        assert len(data["trace"]) > 0
+        
+        # Verify trace contains decryption steps
+        step_names = [step["step"] for step in data["trace"]]
+        assert "add_round_key_initial" in step_names
+        assert "inv_shift_rows" in step_names
+        assert "inv_sub_bytes" in step_names
+        assert "inv_mix_columns" in step_names
+        assert "add_round_key" in step_names
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
