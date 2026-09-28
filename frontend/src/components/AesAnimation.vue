@@ -183,7 +183,7 @@ const props = defineProps({
   inputText: { type: String, default: '' },
   aesKey: { type: Object, default: null }, // Uint8Array
   iv: { type: Object, default: null }, // Uint8Array for CBC
-  ciphertext: { type: Object, default: null }, // Uint8Array for decrypt mode
+  ciphertext: { type: Object, default: null }, // Stored ciphertext bytes
   autoPlay: { type: Boolean, default: true },
   onComplete: { type: Function, default: null },
   mode: { type: String, default: 'encrypt', validator: v => ['encrypt', 'decrypt'].includes(v) },
@@ -339,7 +339,7 @@ const stepIconClass = computed(() => {
 })
 
 async function initializeAnimation() {
-  if (!props.inputText || !props.aesKey) return
+  if (!props.aesKey || (mode.value === 'encrypt' && !props.inputText)) return
 
   // If traceData is provided (from API), use it directly
   if (props.traceData.length > 0) {
@@ -456,8 +456,12 @@ async function initializeEncryption(rk, bytesToState, stateToHex, encryptBlock, 
     ]
     
     // Encrypt to get final ciphertext
-    const { ciphertext } = encryptBlock(xorBlock, rk, false)
-    outputMatrix.value = stateToHex(bytesToState(ciphertext))
+    const { ciphertext: generatedCiphertext } = encryptBlock(xorBlock, rk, false)
+    const storedFirstBlock = props.ciphertext?.slice(0, 16)
+    if (storedFirstBlock && !storedFirstBlock.every((byte, index) => byte === generatedCiphertext[index])) {
+      throw new Error('Ciphertext animasi tidak cocok dengan data yang disimpan')
+    }
+    outputMatrix.value = stateToHex(bytesToState(storedFirstBlock || generatedCiphertext))
   } else {
     // Original behavior (ECB-style for first block)
     inputMatrix.value = stateToHex(bytesToState(firstBlock))
@@ -592,11 +596,11 @@ function finishAnimation() {
   statusMessage.value = mode.value === 'encrypt' ? 'Enkripsi selesai! Ciphertext telah dihasilkan.' : 'Dekripsi selesai! Plaintext telah dipulihkan.'
   statusIcon.value = '✓'
   
-  if (props.onComplete) {
-    setTimeout(() => {
-      props.onComplete()
-    }, 1500)
-  }
+  setTimeout(() => {
+    if (!props.visible || !animationComplete.value) return
+    props.onComplete?.()
+    emit('complete')
+  }, 1500)
 }
 
 function toggleAnimation() {
@@ -667,6 +671,10 @@ watch(() => props.visible, (val) => {
   } else {
     animating.value = false
   }
+})
+
+onMounted(() => {
+  if (props.visible) initializeAnimation()
 })
 
 watch(() => props.inputText, () => {

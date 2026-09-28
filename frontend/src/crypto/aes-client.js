@@ -554,7 +554,7 @@ export function decryptCBC(ciphertext, key, iv) {
   let prevBlock = iv
 
   for (let i = 0; i < blocks.length; i++) {
-    const decBlock = decryptBlock(blocks[i], roundKeys)
+    const { plaintext: decBlock } = decryptBlock(blocks[i], roundKeys)
     // XOR with IV or previous ciphertext block
     for (let j = 0; j < 16; j++) {
       plaintext[i * 16 + j] = decBlock[j] ^ prevBlock[j]

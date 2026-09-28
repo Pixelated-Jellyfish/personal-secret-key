@@ -57,9 +57,13 @@
 const API_BASE = '/api'
 
 function getAuthHeaders(aesKey) {
+  const encodedKey = typeof aesKey === 'string'
+    ? aesKey
+    : btoa(String.fromCharCode(...aesKey))
+
   return {
     'Content-Type': 'application/json',
-    'X-AES-Key': aesKey
+    'X-AES-Key': encodedKey
   }
 }
 

@@ -35,25 +35,20 @@ export const useNotesStore = defineStore('notes', () => {
     }
   }
 
-  async function createNote(aesKey, title, body) {
+  async function createNote(aesKey, title, body, encryptedPayload = null) {
     try {
-      // Encrypt locally
-      const titleEnc = encryptCBCBase64(title, aesKey)
-      const bodyEnc = encryptCBCBase64(body, aesKey)
+      const payload = encryptedPayload || encryptNoteLocally(title, body, aesKey)
 
-      const newNote = await notesApi.create(aesKey, { 
-        title: titleEnc.ciphertext,
-        title_iv: titleEnc.iv,
-        body: bodyEnc.ciphertext,
-        body_iv: bodyEnc.iv,
+      const newNote = await notesApi.create(aesKey, {
+        ...payload,
         client_encrypted: true
       })
       
       // Add to local list with decrypted title for immediate display
       notes.value.unshift({ 
         id: newNote.id, 
-        title: titleEnc.ciphertext,
-        title_iv: titleEnc.iv,
+        title: payload.title,
+        title_iv: payload.title_iv,
         decryptedTitle: title,
         updated_at: new Date().toISOString() 
       })
@@ -63,17 +58,12 @@ export const useNotesStore = defineStore('notes', () => {
     }
   }
 
-  async function updateNote(aesKey, id, title, body) {
+  async function updateNote(aesKey, id, title, body, encryptedPayload = null) {
     try {
-      // Encrypt locally with new IV
-      const titleEnc = encryptCBCBase64(title, aesKey)
-      const bodyEnc = encryptCBCBase64(body, aesKey)
+      const payload = encryptedPayload || encryptNoteLocally(title, body, aesKey)
 
-      await notesApi.update(aesKey, id, { 
-        title: titleEnc.ciphertext,
-        title_iv: titleEnc.iv,
-        body: bodyEnc.ciphertext,
-        body_iv: bodyEnc.iv,
+      await notesApi.update(aesKey, id, {
+        ...payload,
         client_encrypted: true
       })
       
@@ -81,8 +71,8 @@ export const useNotesStore = defineStore('notes', () => {
       if (idx !== -1) {
         notes.value[idx] = { 
           ...notes.value[idx], 
-          title: titleEnc.ciphertext,
-          title_iv: titleEnc.iv,
+          title: payload.title,
+          title_iv: payload.title_iv,
           decryptedTitle: title,
           updated_at: new Date().toISOString() 
         }

@@ -6,8 +6,17 @@ import base64
 from fastapi import APIRouter, Header, HTTPException, status
 from typing import Annotated
 
-from ..crypto.aes import key_expansion, key_expansion_with_trace, encrypt_block, decrypt_block
+from ..crypto.aes import (
+    bytes_to_state,
+    decrypt_block,
+    encrypt_block,
+    key_expansion,
+    key_expansion_with_trace,
+    pkcs7_pad,
+    state_to_hex,
+)
 from ..crypto.kdf import derive_key, DEFAULT_SALT
+from ..crypto.modes import decrypt_cbc
 from ..schemas import (
     NoteCreate, NoteUpdate, NoteResponse, NoteListItem, NoteRaw,
     AesLogResponse, RoundKeysResponse, DeriveKeyRequest, DeriveKeyResponse, ErrorResponse
@@ -105,36 +114,37 @@ def get_aes_log(note_id: str, aes_key: bytes = Header(..., alias="X-AES-Key")):
     Menampilkan matriks input + trace per ronde (SubBytes, ShiftRows, MixColumns, AddRoundKey).
     """
     key = get_aes_key(aes_key)
-    
     note_raw = get_note_raw(note_id)
     if note_raw is None:
         raise HTTPException(status_code=404, detail="Catatan tidak ditemukan")
-    
-    # Ambil blok pertama dari body ciphertext (setelah dekripsi CBC)
-    # Kita butuh plaintext blok pertama untuk trace enkripsi
-    from ..crypto.modes import decrypt_cbc
-    
+
+    # Ambil blok plaintext pertama, lalu ikuti XOR CBC sebelum AES.
     ct = base64.b64decode(note_raw["body_ciphertext"])
     iv = base64.b64decode(note_raw["body_iv"])
-    
+
     # Dekripsi CBC untuk dapatkan plaintext
     round_keys = key_expansion(key)
     plaintext = decrypt_cbc(ct, key, iv)
-    
+
     # Ambil 16 byte pertama
     first_block = plaintext[:16]
     if len(first_block) < 16:
-        from ..crypto.aes import pkcs7_pad
-        first_block = pkcs7_pad(first_block)[:16]
-    
-    # Enkripsi blok pertama dengan trace (ECB mode untuk visualisasi)
-    _, trace = encrypt_block(first_block, round_keys, trace=True)
-    
-    # Input matrix (plaintext blok pertama sebagai 4x4 hex)
-    from ..crypto.aes import bytes_to_state, state_to_hex
+        first_block = pkcs7_pad(plaintext)[:16]
+    cbc_input = bytes(byte ^ iv_byte for byte, iv_byte in zip(first_block, iv))
+
+    # Input panel menampilkan plaintext; trace dimulai setelah XOR dengan IV.
+    _, trace = encrypt_block(cbc_input, round_keys, trace=True)
+    trace.insert(0, {
+        "round": 0,
+        "step": "cbc_xor_iv",
+        "state": state_to_hex(bytes_to_state(cbc_input)),
+        "description": "CBC: Plaintext XOR IV (First Block)",
+    })
+
+    # Input matrix adalah blok plaintext sebelum proses CBC.
     input_state = bytes_to_state(first_block)
     input_matrix = state_to_hex(input_state)
-    
+
     return AesLogResponse(
         input_matrix=input_matrix,
         trace=trace
@@ -168,39 +178,27 @@ def get_aes_log_decrypt(note_id: str, aes_key: bytes = Header(..., alias="X-AES-
     Menampilkan ciphertext blok pertama → trace balik (InvAddRoundKey, InvShiftRows, InvSubBytes, InvMixColumns) → plaintext.
     """
     key = get_aes_key(aes_key)
-    
     note_raw = get_note_raw(note_id)
     if note_raw is None:
         raise HTTPException(status_code=404, detail="Catatan tidak ditemukan")
-    
-    # Ambil blok pertama dari body ciphertext
-    from ..crypto.modes import decrypt_cbc
-    
+
+    # Dekripsi blok ciphertext CBC yang tersimpan, lalu XOR dengan IV.
     ct = base64.b64decode(note_raw["body_ciphertext"])
     iv = base64.b64decode(note_raw["body_iv"])
-    
-    # Dekripsi CBC untuk dapatkan plaintext
     round_keys = key_expansion(key)
-    plaintext = decrypt_cbc(ct, key, iv)
-    
-    # Ambil 16 byte pertama plaintext (ini yang akan jadi output akhir dekripsi)
-    first_block_plaintext = plaintext[:16]
-    if len(first_block_plaintext) < 16:
-        from ..crypto.aes import pkcs7_pad
-        first_block_plaintext = pkcs7_pad(first_block_plaintext)[:16]
-    
-    # Enkripsi blok plaintext pertama untuk dapatkan ciphertext blok pertama (ECB mode)
-    # Ini adalah ciphertext yang akan didekripsi dalam visualisasi
-    first_block_ciphertext, _ = encrypt_block(first_block_plaintext, round_keys, trace=False)
-    
-    # Input matrix untuk visualisasi dekripsi = ciphertext blok pertama
-    from ..crypto.aes import bytes_to_state, state_to_hex
+    first_block_ciphertext = ct[:16]
+    decrypted_block, trace = decrypt_block(first_block_ciphertext, round_keys, trace=True)
+    first_block_plaintext = bytes(
+        byte ^ iv_byte for byte, iv_byte in zip(decrypted_block, iv)
+    )
     input_state = bytes_to_state(first_block_ciphertext)
     input_matrix = state_to_hex(input_state)
-    
-    # Dekripsi blok pertama dengan trace
-    _, trace = decrypt_block(first_block_ciphertext, round_keys, trace=True)
-    
+    trace.append({
+        "round": 0,
+        "step": "cbc_xor_iv",
+        "state": state_to_hex(bytes_to_state(first_block_plaintext)),
+        "description": "CBC: Decrypted Block XOR IV = Plaintext",
+    })
     return AesLogResponse(
         input_matrix=input_matrix,
         trace=trace

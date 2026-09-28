@@ -7,21 +7,7 @@
       </router-link>
     </div>
     
-    <!-- Encryption Recap Animation (after saving note) -->
-    <AesAnimation
-      v-if="showEncryptionRecap"
-      :visible="showEncryptionRecap"
-      :title="'Catatan Tersimpan (Enkripsi)'"
-      :input-text="recapData.title + '\n' + recapData.body"
-      :aes-key="cryptoStore.aesKey"
-      :auto-play="true"
-      :mode="'encrypt'"
-      :show-cbc-flow="true"
-      @close="onRecapComplete"
-      @complete="onRecapComplete"
-    />
-    
-    <div v-else-if="loading" class="loading">Memuat...</div>
+    <div v-if="loading" class="loading">Memuat...</div>
     
     <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
@@ -62,20 +48,14 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onMounted, ref, computed } from 'vue'
 import { useCryptoStore } from '@/stores/crypto'
 import { useNotesStore } from '@/stores/notes'
-import AesAnimation from '@/components/AesAnimation.vue'
 
-const route = useRoute()
-const router = useRouter()
 const cryptoStore = useCryptoStore()
 const notesStore = useNotesStore()
 
 const noteToDelete = ref(null)
-const showEncryptionRecap = ref(false)
-const recapData = ref({ title: '', body: '' })
 
 const sortedNotes = computed(() => notesStore.sortedNotes)
 const loading = computed(() => notesStore.loading)
@@ -111,35 +91,7 @@ const formatDate = (isoString) => {
   })
 }
 
-// Check for saved note data in query params on mount
-onMounted(() => {
-  checkForSavedNote()
-  fetchNotes()
-})
-
-// Also check when route changes (e.g., returning from editor)
-watch(() => route.fullPath, () => {
-  checkForSavedNote()
-})
-
-const checkForSavedNote = () => {
-  // Check for query params from editor after save
-  if (route.query.saved && route.query.title && route.query.body) {
-    recapData.value = {
-      title: route.query.title,
-      body: route.query.body
-    }
-    showEncryptionRecap.value = true
-    // Clean up URL
-    router.replace({ name: 'notes' })
-  }
-}
-
-const onRecapComplete = () => {
-  showEncryptionRecap.value = false
-  recapData.value = { title: '', body: '' }
-  fetchNotes()
-}
+onMounted(fetchNotes)
 </script>
 
 <style scoped>

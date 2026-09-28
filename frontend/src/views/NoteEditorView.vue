@@ -63,8 +63,10 @@
       v-if="showAnimation"
       :visible="showAnimation"
       :title="isEditing ? 'Memperbarui Catatan (Enkripsi)' : 'Menyimpan Catatan Baru (Enkripsi)'"
-      :input-text="form.title + '\n' + form.body"
+      :input-text="encryptionData.inputText"
       :aes-key="cryptoStore.aesKey"
+      :iv="encryptionData.iv"
+      :ciphertext="encryptionData.ciphertext"
       :auto-play="true"
       :mode="'encrypt'"
       :show-cbc-flow="true"
@@ -98,7 +100,9 @@ const error = ref('')
 const showAnimation = ref(false)
 const showDecryptAnimation = ref(false)
 const pendingSave = ref(null) // 'create' or 'update'
-const decryptData = ref({ ciphertext: null, iv: null })
+const pendingEncryptedPayload = ref(null)
+const encryptionData = ref({ inputText: '', ciphertext: null, iv: null })
+const decryptData = ref({ ciphertext: null, iv: null, rawNote: null })
 
 // Helper to convert base64 to Uint8Array
 const base64ToBytes = (b64) => {
@@ -124,7 +128,8 @@ const loadNote = async () => {
       // Store ciphertext and IV for decryption animation (convert base64 to Uint8Array)
       decryptData.value = {
         ciphertext: base64ToBytes(rawNote.body_ciphertext || rawNote.body),
-        iv: base64ToBytes(rawNote.body_iv)
+        iv: base64ToBytes(rawNote.body_iv),
+        rawNote
       }
       showDecryptAnimation.value = true
     } else {
@@ -141,14 +146,13 @@ const onDecryptComplete = async () => {
   showDecryptAnimation.value = false
   
   try {
-    // Now fetch the decrypted note content
-    const note = await notesStore.getNote(cryptoStore.aesKey, noteId.value)
-    if (note) {
-      form.value.title = note.title
-      form.value.body = note.body
-    } else {
-      error.value = 'Catatan tidak ditemukan'
+    const note = notesStore.decryptNoteLocally(decryptData.value.rawNote, cryptoStore.aesKey)
+    if (note.title === '[Gagal dekripsi]' || note.body === '[Gagal dekripsi]') {
+      error.value = 'Gagal dekripsi: passphrase salah atau data rusak'
+      return
     }
+    form.value.title = note.title
+    form.value.body = note.body
   } catch (e) {
     error.value = e.message || 'Gagal memuat catatan'
   } finally {
@@ -172,6 +176,18 @@ const save = async () => {
   saving.value = true
   
   try {
+    pendingEncryptedPayload.value = notesStore.encryptNoteLocally(
+      form.value.title,
+      form.value.body,
+      cryptoStore.aesKey
+    )
+    const animationField = form.value.body.length > 0 ? 'body' : 'title'
+    const animationIvField = `${animationField}_iv`
+    encryptionData.value = {
+      inputText: form.value[animationField],
+      ciphertext: base64ToBytes(pendingEncryptedPayload.value[animationField]),
+      iv: base64ToBytes(pendingEncryptedPayload.value[animationIvField])
+    }
     if (isEditing.value) {
       // Show encryption animation for update
       pendingSave.value = 'update'
@@ -190,6 +206,8 @@ const save = async () => {
 const closeAnimation = () => {
   showAnimation.value = false
   pendingSave.value = null
+  pendingEncryptedPayload.value = null
+  encryptionData.value = { inputText: '', ciphertext: null, iv: null }
   saving.value = false
 }
 
@@ -197,35 +215,30 @@ const finishSave = async () => {
   showAnimation.value = false
   
   try {
-    let savedTitle = ''
-    let savedBody = ''
-    
     if (pendingSave.value === 'update') {
       await notesStore.updateNote(
         cryptoStore.aesKey, 
         noteId.value, 
         form.value.title, 
-        form.value.body
+        form.value.body,
+        pendingEncryptedPayload.value
       )
-      savedTitle = form.value.title
-      savedBody = form.value.body
     } else if (pendingSave.value === 'create') {
-      const newId = await notesStore.createNote(
+      await notesStore.createNote(
         cryptoStore.aesKey, 
         form.value.title, 
-        form.value.body
+        form.value.body,
+        pendingEncryptedPayload.value
       )
-      savedTitle = form.value.title
-      savedBody = form.value.body
-      router.push({ name: 'notes', query: { saved: 'true', title: savedTitle, body: savedBody } })
-      return
     }
-    router.push({ name: 'notes', query: { saved: 'true', title: savedTitle, body: savedBody } })
+    router.push({ name: 'notes' })
   } catch (e) {
     error.value = e.message || 'Gagal menyimpan catatan'
   } finally {
     saving.value = false
     pendingSave.value = null
+    pendingEncryptedPayload.value = null
+    encryptionData.value = { inputText: '', ciphertext: null, iv: null }
   }
 }
 

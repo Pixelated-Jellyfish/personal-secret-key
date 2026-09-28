@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.crypto.kdf import derive_key, DEFAULT_SALT
+from app.crypto.aes import pkcs7_pad
 
 
 client = TestClient(app)
@@ -23,16 +24,22 @@ def auth_header() -> dict:
     return {"X-AES-Key": get_test_key()}
 
 
+def hex_matrix(block: bytes) -> list[list[str]]:
+    from app.crypto.aes import bytes_to_state, state_to_hex
+
+    return state_to_hex(bytes_to_state(block))
+
+
 class TestNotesAPI:
     """Test CRUD notes API."""
 
-    def setup_method(self):
-        # Clear notes before each test
-        import json
-        from pathlib import Path
-        notes_file = Path(__file__).parent.parent / "data" / "notes.json"
-        if notes_file.exists():
-            notes_file.unlink()
+    @pytest.fixture(autouse=True)
+    def isolate_notes_storage(self, tmp_path, monkeypatch):
+        from app import storage
+
+        monkeypatch.setattr(storage, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(storage, "NOTES_FILE", tmp_path / "notes.json")
+        monkeypatch.setattr(storage, "LOCK_FILE", tmp_path / "notes.json.lock")
 
     def test_derive_key(self):
         response = client.post("/api/crypto/derive", json={"passphrase": "testpassphrase123"})
@@ -135,12 +142,17 @@ class TestNotesAPI:
         notes = response.json()
         assert notes[0]["title"] == "[Gagal dekripsi]"
 
-    def test_aes_log_endpoint(self):
+    @pytest.mark.parametrize("body", [
+        "short",
+        "Ini adalah plaintext untuk test AES visualisasi blok pertama",
+    ])
+    def test_aes_log_endpoint(self, body):
         response = client.post("/api/notes",
-            json={"title": "AES Test", "body": "Ini adalah plaintext untuk test AES visualisasi blok pertama"},
+            json={"title": "AES Test", "body": body},
             headers=auth_header())
         note_id = response.json()["id"]
 
+        raw = client.get(f"/api/notes/{note_id}/raw", headers=auth_header()).json()
         response = client.get(f"/api/notes/{note_id}/aes-log", headers=auth_header())
         assert response.status_code == 200
         data = response.json()
@@ -148,6 +160,17 @@ class TestNotesAPI:
         assert "trace" in data
         assert len(data["input_matrix"]) == 4
         assert len(data["trace"]) > 0
+        ciphertext = base64.b64decode(raw["body_ciphertext"])
+        iv = base64.b64decode(raw["body_iv"])
+        first_plaintext_block = pkcs7_pad(body.encode("utf-8"))[:16]
+        cbc_input = bytes(
+            plaintext_byte ^ iv_byte
+            for plaintext_byte, iv_byte in zip(first_plaintext_block, iv)
+        )
+        assert data["input_matrix"] == hex_matrix(first_plaintext_block)
+        assert data["trace"][0]["step"] == "cbc_xor_iv"
+        assert data["trace"][0]["state"] == hex_matrix(cbc_input)
+        assert data["trace"][-1]["state"] == hex_matrix(ciphertext[:16])
 
     def test_round_keys_endpoint(self):
         response = client.post("/api/notes",
@@ -166,12 +189,17 @@ class TestNotesAPI:
             for row in rk:
                 assert len(row) == 4
 
-    def test_aes_log_decrypt_endpoint(self):
+    @pytest.mark.parametrize("body", [
+        "short",
+        "Ini adalah plaintext untuk test dekripsi AES visualisasi",
+    ])
+    def test_aes_log_decrypt_endpoint(self, body):
         response = client.post("/api/notes",
-            json={"title": "AES Decrypt Test", "body": "Ini adalah plaintext untuk test dekripsi AES visualisasi"},
+            json={"title": "AES Decrypt Test", "body": body},
             headers=auth_header())
         note_id = response.json()["id"]
 
+        raw = client.get(f"/api/notes/{note_id}/raw", headers=auth_header()).json()
         response = client.get(f"/api/notes/{note_id}/aes-log-decrypt", headers=auth_header())
         assert response.status_code == 200
         data = response.json()
@@ -187,6 +215,11 @@ class TestNotesAPI:
         assert "inv_sub_bytes" in step_names
         assert "inv_mix_columns" in step_names
         assert "add_round_key" in step_names
+        ciphertext = base64.b64decode(raw["body_ciphertext"])
+        first_plaintext_block = pkcs7_pad(body.encode("utf-8"))[:16]
+        assert data["input_matrix"] == hex_matrix(ciphertext[:16])
+        assert data["trace"][-1]["step"] == "cbc_xor_iv"
+        assert data["trace"][-1]["state"] == hex_matrix(first_plaintext_block)
 
 
 if __name__ == "__main__":

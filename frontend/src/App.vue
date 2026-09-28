@@ -10,6 +10,9 @@
           <router-link v-if="isUnlocked" to="/aes-lab" class="nav-link" active-class="active">
             AES Lab
           </router-link>
+          <button v-if="isUnlocked" type="button" class="nav-link lock-link" @click="lockApp">
+            Kunci
+          </button>
         </nav>
       </div>
     </header>
@@ -27,12 +30,20 @@
 <script setup>
 import { computed } from 'vue'
 import { useCryptoStore } from './stores/crypto'
+import { useNotesStore } from './stores/notes'
 import { useRouter } from 'vue-router'
 
 const cryptoStore = useCryptoStore()
+const notesStore = useNotesStore()
 const router = useRouter()
 
 const isUnlocked = computed(() => cryptoStore.hasKey)
+
+function lockApp() {
+  notesStore.clear()
+  cryptoStore.lock()
+  router.push({ name: 'passphrase' })
+}
 
 cryptoStore.checkKeyFromMemory()
 </script>
@@ -84,6 +95,13 @@ cryptoStore.checkKeyFromMemory()
   text-decoration: none;
   border-radius: 6px;
   transition: all 0.15s ease;
+}
+
+.lock-link {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .nav-link:hover {
