@@ -72,7 +72,11 @@ def decrypt_cbc(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
         plaintext.extend(xor_block)
         prev_block = block
     
-    return pkcs7_unpad(plaintext)
+    try:
+        return pkcs7_unpad(plaintext)
+    except Exception:
+        # Jika unpadding gagal (misal kunci/PIN salah), kembalikan bytes hasil dekripsi mentah
+        return bytes(plaintext)
 
 
 def encrypt_cbc_base64(plaintext: str, key: bytes) -> dict:
@@ -89,8 +93,12 @@ def encrypt_cbc_base64(plaintext: str, key: bytes) -> dict:
 def decrypt_cbc_base64(ciphertext_b64: str, key: bytes, iv_b64: str) -> str:
     """
     Dekripsi base64 encoded ciphertext + IV.
+    Jika PIN/kunci salah, mengembalikan string karakter hasil dekripsi (garbled/acak).
     """
     ct = base64.b64decode(ciphertext_b64)
     iv = base64.b64decode(iv_b64)
     pt = decrypt_cbc(ct, key, iv)
-    return pt.decode("utf-8")
+    try:
+        return pt.decode("utf-8")
+    except UnicodeDecodeError:
+        return pt.decode("utf-8", errors="replace").replace("\x00", "")

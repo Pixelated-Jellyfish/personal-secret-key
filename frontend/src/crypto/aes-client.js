@@ -562,7 +562,12 @@ export function decryptCBC(ciphertext, key, iv) {
     prevBlock = blocks[i]
   }
 
-  return pkcs7Unpad(plaintext)
+  try {
+    return pkcs7Unpad(plaintext)
+  } catch {
+    // Jika unpadding gagal (misal PIN salah), kembalikan bytes hasil dekripsi mentah
+    return plaintext
+  }
 }
 
 /**
@@ -584,7 +589,8 @@ export function decryptCBCBase64(ciphertextB64, key, ivB64) {
   const ct = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0))
   const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0))
   const pt = decryptCBC(ct, key, iv)
-  return new TextDecoder().decode(pt)
+  const decoded = new TextDecoder('utf-8', { fatal: false }).decode(pt)
+  return decoded.replace(/\0/g, '')
 }
 
 /**

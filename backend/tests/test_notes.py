@@ -131,16 +131,19 @@ class TestNotesAPI:
             headers={"X-AES-Key": key1})
         note_id = response.json()["id"]
 
-        # Try to read with key2
+        # Try to read with key2 (wrong key)
         key2 = base64.b64encode(derive_key("passphrase222", DEFAULT_SALT)).decode()
         response = client.get(f"/api/notes/{note_id}", headers={"X-AES-Key": key2})
-        # Should fail to decrypt (title will be garbled or error)
-        # Actually it returns 200 but title is "[Gagal dekripsi]"
-        # Better: list notes with wrong key should show garbled title
+        assert response.status_code == 200
+        note = response.json()
+        assert note["title"] != "Secret"
+        assert note["body"] != "Hidden"
+
+        # List notes with wrong key should show decrypted garbled title
         response = client.get("/api/notes", headers={"X-AES-Key": key2})
         assert response.status_code == 200
         notes = response.json()
-        assert notes[0]["title"] == "[Gagal dekripsi]"
+        assert notes[0]["title"] != "Secret"
 
     @pytest.mark.parametrize("body", [
         "short",

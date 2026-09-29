@@ -125,11 +125,8 @@ def get_note(note_id: str, aes_key: bytes) -> dict[str, Any] | None:
                 title = decrypt_cbc_base64(note["title_ciphertext"], aes_key, note["title_iv"])
                 body = decrypt_cbc_base64(note["body_ciphertext"], aes_key, note["body_iv"])
             except Exception:
-                # Wrong key atau data corrupt
-                raise HTTPException(
-                    status_code=400,
-                    detail="Gagal dekripsi: kunci salah atau data rusak"
-                )
+                title = "[Gagal dekripsi]"
+                body = "[Gagal dekripsi]"
             
             return {
                 "id": note["id"],

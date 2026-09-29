@@ -146,10 +146,6 @@ const onDecryptComplete = async () => {
   
   try {
     const note = notesStore.decryptNoteLocally(decryptData.value.rawNote, cryptoStore.aesKey)
-    if (note.title === '[Gagal dekripsi]' || note.body === '[Gagal dekripsi]') {
-      error.value = 'Gagal dekripsi: passphrase salah atau data rusak'
-      return
-    }
     form.value.title = note.title
     form.value.body = note.body
   } catch (e) {
