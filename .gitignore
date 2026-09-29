@@ -1,0 +1,25 @@
+# Node dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Cache & logs
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python / Backend (jika ada)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+venv/
+.venv/
