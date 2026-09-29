@@ -80,7 +80,7 @@ flowchart TD
 ---
 
 ### B. AES-128 (Advanced Encryption Standard - FIPS-197)
-- **Karakteristik**:
+- **Karakteristik**:a
   - Tipe Cipher: *Symmetric Block Cipher* (kunci enkripsi dan dekripsi identik).
   - Ukuran Blok (*Block Size*): **128 bit (16 byte)**, direpresentasikan dalam **State Matrix $4 \times 4$ byte**.
   - Ukuran Kunci (*Key Length*): **128 bit (16 byte)**.
