@@ -130,14 +130,6 @@
           <!-- Control Buttons -->
           <div class="animation-controls">
             <button 
-              class="btn btn-secondary" 
-              @click="previousStep"
-              :disabled="currentStep === 0 || animating"
-            >
-              Sebelumnya
-            </button>
-            
-            <button 
               class="btn btn-primary" 
               @click="toggleAnimation"
               :disabled="animating && currentStep === totalSteps - 1"
@@ -146,14 +138,6 @@
               <span v-else-if="animating">Selesai</span>
               <span v-else-if="currentStep === totalSteps - 1">Ulangi</span>
               <span v-else>Mulai Animasi</span>
-            </button>
-            
-            <button 
-              class="btn btn-secondary" 
-              @click="nextStep"
-              :disabled="currentStep === totalSteps - 1 || animating"
-            >
-              Selanjutnya
             </button>
           </div>
 
@@ -165,7 +149,7 @@
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-ghost" @click="close">Tutup</button>
+          <button class="btn btn-ghost" @click="close">{{ closeText }}</button>
           <button v-if="onComplete" class="btn btn-primary" @click="handleComplete">Lanjutkan</button>
         </div>
       </div>
@@ -190,7 +174,8 @@ const props = defineProps({
   traceData: { type: Array, default: () => [] }, // Pre-computed trace from API
   roundKeysData: { type: Array, default: () => [] }, // Pre-computed round keys from API
   keyExpansionTraceData: { type: Array, default: () => [] },
-  showCbcFlow: { type: Boolean, default: true } // Show IV XOR step for CBC
+  showCbcFlow: { type: Boolean, default: true }, // Show IV XOR step for CBC
+  closeText: { type: String, default: 'Tutup' }
 })
 
 const emit = defineEmits(['close', 'complete'])

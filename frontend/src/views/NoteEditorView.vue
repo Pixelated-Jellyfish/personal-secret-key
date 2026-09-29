@@ -13,6 +13,7 @@
       :auto-play="true"
       :mode="'decrypt'"
       :show-cbc-flow="true"
+      close-text="Batal"
       @close="cancelDecryptAnimation"
       @complete="onDecryptComplete"
     />
@@ -44,10 +45,7 @@
       </div>
       
       <div class="form-actions">
-        <router-link :to="`/notes/${noteId}`" class="btn btn-secondary" v-if="isEditing">
-          Batal
-        </router-link>
-        <router-link to="/notes" class="btn btn-secondary" v-else>
+        <router-link to="/notes" class="btn btn-secondary">
           Batal
         </router-link>
         
@@ -70,6 +68,7 @@
       :auto-play="true"
       :mode="'encrypt'"
       :show-cbc-flow="true"
+      close-text="Batal"
       @close="closeAnimation"
       @complete="finishSave"
     />
