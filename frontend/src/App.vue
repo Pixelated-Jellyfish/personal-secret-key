@@ -7,9 +7,6 @@
           <router-link v-if="isUnlocked" to="/notes" class="nav-link" active-class="active">
             Catatan
           </router-link>
-          <router-link v-if="isUnlocked" to="/aes-lab" class="nav-link" active-class="active">
-            AES Lab
-          </router-link>
           <button v-if="isUnlocked" type="button" class="nav-link lock-link" @click="lockApp">
             Kunci
           </button>
@@ -88,23 +85,34 @@ cryptoStore.checkKeyFromMemory()
 }
 
 .nav-link {
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 500;
   color: #6B6B6B;
   text-decoration: none;
-  border-radius: 6px;
-  transition: all 0.15s ease;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .lock-link {
-  border: 0;
-  background: transparent;
+  border: 1px solid #E8E8EC;
+  background: #FFFFFF;
   font-family: inherit;
   cursor: pointer;
+  color: #4B5563;
 }
 
-.nav-link:hover {
+.lock-link:hover {
+  color: #EF4444;
+  background: #FEF2F2;
+  border-color: #FECACA;
+  transform: translateY(-1px);
+}
+
+.nav-link:hover:not(.lock-link) {
   color: #0A0A0A;
   background: #F5F5F5;
 }
@@ -112,6 +120,7 @@ cryptoStore.checkKeyFromMemory()
 .nav-link.active {
   color: #6366F1;
   background: rgba(99, 102, 241, 0.1);
+  font-weight: 600;
 }
 
 .main-content {

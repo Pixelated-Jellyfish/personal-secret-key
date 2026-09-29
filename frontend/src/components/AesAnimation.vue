@@ -1123,63 +1123,93 @@ onUnmounted(() => {
 .btn {
   padding: 10px 20px;
   font-size: 14px;
-  font-weight: 500;
   font-family: 'DM Sans', sans-serif;
-  border-radius: 8px;
-  border: none;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  user-select: none;
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .btn-primary {
-  background: #6366F1;
+  background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
   color: #FFFFFF;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #4F46E5;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  background: linear-gradient(135deg, #6D70F7 0%, #4338CA 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
 .btn-secondary {
   background: #FFFFFF;
-  color: #6366F1;
-  border: 1px solid #6366F1;
+  color: #4B5563;
+  font-weight: 500;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #EEF2FF;
+  background: #F9FAFB;
+  color: #111827;
+  border-color: #D1D5DB;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .btn-ghost {
-  background: transparent;
-  color: #6B6B6B;
+  background: #FFFFFF;
+  color: #4B5563;
+  font-weight: 500;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .btn-ghost:hover {
-  background: #F5F5F5;
-  color: #0A0A0A;
+  background: #F9FAFB;
+  color: #111827;
+  border-color: #D1D5DB;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.btn-ghost:active {
+  transform: translateY(0);
+  background: #F3F4F6;
 }
 
 .btn-destructive {
-  background: #FFFFFF;
-  color: #EF4444;
-  border: 1px solid #EF4444;
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+  color: #FFFFFF;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
 }
 
 .btn-destructive:hover {
-  background: #FEF2F2;
+  background: linear-gradient(135deg, #F87171 0%, #B91C1C 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
 }
 
 /* HexMatrix overrides for animation */

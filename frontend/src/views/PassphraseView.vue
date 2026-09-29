@@ -312,32 +312,44 @@ onMounted(() => {
 }
 
 .btn {
-  padding: 10px 16px;
+  padding: 11px 20px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   font-family: 'DM Sans', sans-serif;
-  border-radius: 6px;
-  border: none;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  user-select: none;
 }
 
 .btn-primary {
-  background: #6366F1;
+  background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
   color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #4F46E5;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #6D70F7 0%, #4338CA 100%);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 .hint {
